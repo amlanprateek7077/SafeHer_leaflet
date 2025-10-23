@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>SafeHer — Map (Leaflet)</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 75vh; width: 100%; border-radius: 12px; }
+    .controls { display:flex; gap:8px; margin-bottom: 8px; }
+    .legend { background: white; padding:8px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.1); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>SafeHer — Women Safety Map (India) — Leaflet</h1>
+    <div>
+      <a href="/logout">Logout</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="controls">
+      <input id="searchBox" placeholder="Search place or address (e.g., Connaught Place, Delhi)" style="flex:1;padding:8px;border-radius:6px;border:1px solid #ccc;">
+      <button id="searchBtn">Search</button>
+      <button id="locBtn">Use my location</button>
+    </div>
+
+    <div id="map"></div>
+    <div id="info" style="margin-top:8px;"></div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    let map = L.map('map').setView([20.5937,78.9629],5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let dataPoints = [];
+    fetch('/data').then(r=>r.json()).then(resp=>{
+      if(resp.status==='ok'){
+        dataPoints = resp.data;
+        addPointsToMap();
+      } else {
+        alert("Error loading data: " + resp.message);
+      }
+    });
+
+    function createCircle(pt){
+      const color = (pt.zone === 'Red') ? '#ff4d4f' : (pt.zone === 'Yellow' ? '#ffcc00' : '#53d769');
+      const circle = L.circle([parseFloat(pt.latitude), parseFloat(pt.longitude)], {
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.35,
+        radius: 200
+      });
+      const popupHtml = `<b>Zone:</b> ${pt.zone}<br><b>Score:</b> ${pt.risk_score}<br><b>Place:</b> ${pt.place_type || ''}<br><b>City:</b> ${pt.city || ''}<br><b>State:</b> ${pt.state || ''}<br><b>Last updated:</b> ${pt.last_updated || ''}`;
+      circle.bindPopup(popupHtml);
+      return circle;
+    }
+
+    function addPointsToMap(){
+      dataPoints.forEach(pt=>{
+        createCircle(pt).addTo(map);
+      });
+    }
+
+    document.getElementById('locBtn').addEventListener('click', ()=> {
+      if(navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const lat = pos.coords.latitude, lon = pos.coords.longitude;
+          map.setView([lat, lon], 15);
+          findNearest(lat, lon);
+        }, err=>{
+          alert("Couldn't get location: " + err.message);
+        })
+      } else { alert("Geolocation not supported") }
+    });
+
+    document.getElementById('searchBtn').addEventListener('click', ()=> {
+      const q = document.getElementById('searchBox').value;
+      if(!q) return;
+      // Use Nominatim open API for geocoding
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=1&countrycodes=in';
+      fetch(url, {headers: {'Accept-Language': 'en'}}).then(r=>r.json()).then(res=>{
+        if(res && res[0]){
+          const lat = parseFloat(res[0].lat), lon = parseFloat(res[0].lon);
+          map.setView([lat, lon], 15);
+          findNearest(lat, lon);
+        } else {
+          alert('No results found');
+        }
+      }).catch(e=>{
+        alert('Geocoding error: ' + e);
+      });
+    });
+
+    function findNearest(lat, lon){
+      if(dataPoints.length === 0){
+        document.getElementById('info').innerText = "No data loaded yet.";
+        return;
+      }
+      function hav(a,b,c,d){
+        const R=6371;
+        const dlat=(a-c)*Math.PI/180; const dlon=(b-d)*Math.PI/180;
+        const sla=Math.sin(dlat/2), slo=Math.sin(dlon/2);
+        const v = sla*sla + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*slo*slo;
+        const res = 2*R*Math.atan2(Math.sqrt(v), Math.sqrt(1-v));
+        return res;
+      }
+      let best=null, bestD=1e9;
+      dataPoints.forEach(pt=>{
+        const d = hav(lat, lon, parseFloat(pt.latitude), parseFloat(pt.longitude));
+        if(d < bestD){ bestD = d; best = pt; }
+      });
+      if(best){
+        const html = `<div>
+            <b>Nearest area zone:</b> <span style="color:${best.zone === 'Red' ? '#b71c1c' : best.zone === 'Yellow' ? '#b8860b' : '#2e7d32'}">${best.zone}</span>
+            <br>Distance: ${bestD.toFixed(3)} km
+            <br>Risk score: ${Number(best.risk_score).toFixed(0)}
+            <br>Place: ${best.place_type || ''}, ${best.city || ''}, ${best.state || ''}
+            <br>Last updated: ${best.last_updated || ''}
+          </div>`;
+        document.getElementById('info').innerHTML = html;
+        L.popup().setLatLng([parseFloat(best.latitude), parseFloat(best.longitude)]).setContent(html).openOn(map);
+      } else {
+        document.getElementById('info').innerText = "No nearby area found.";
+      }
+    }
+
+  </script>
+</body>
+</html>

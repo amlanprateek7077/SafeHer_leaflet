@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login - SafeHer</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+  <div class="auth-card">
+    <h2>SafeHer — Login</h2>
+    <form method="post" action="/login">
+      <label>Mobile</label>
+      <input name="mobile" required />
+      <label>Password</label>
+      <input name="password" type="password" required />
+      <button type="submit">Login</button>
+    </form>
+    <p>Don't have an account? <a href="/signup">Signup</a></p>
+  </div>
+</body>
+</html>
